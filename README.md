@@ -11,23 +11,44 @@ Your goal is to:
 - Evaluate what your system gets right and wrong
 - Reflect on how this mirrors real world AI recommenders
 
-Replace this paragraph with your own summary of what your version does.
+This simulation builds a content-based music recommender that matches songs to a user's taste profile using a weighted scoring formula. Given a user's preferred genre, mood, energy level, and acoustic preference, the system scores every song in the catalog and returns the top-K closest matches.
 
 ---
 
 ## How The System Works
 
-Explain your design in plain language.
+Real-world recommenders like Spotify or YouTube combine **collaborative filtering** (recommending what similar users liked) and **content-based filtering** (recommending songs with similar audio features). At scale they add deep learning on raw audio, NLP on lyrics, and real-time feedback loops that update your profile with every skip or replay. This simulation focuses purely on **content-based filtering** — no user history, no crowd signal — which keeps the logic transparent and easy to reason about. The priority here is matching the *feel* of a song to what the user explicitly says they want: the right energy level, the right emotional mood, and the right genre, in that order of importance.
 
-Some prompts to answer:
+### Song Features
 
-- What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+Each `Song` object stores:
 
-You can include a simple diagram or bullet list if helpful.
+| Feature | Type | Role in scoring |
+|---|---|---|
+| `genre` | string | Categorical match against user's favorite genre (weight: 30%) |
+| `mood` | string | Categorical match against user's favorite mood (weight: 20%) |
+| `energy` | float 0–1 | Proximity to user's target energy (weight: 25%) |
+| `valence` | float 0–1 | Proximity score; measures musical positivity (weight: 10%) |
+| `acousticness` | float 0–1 | Proximity from user's `likes_acoustic` boolean (weight: 10%) |
+| `danceability` | float 0–1 | Secondary activity signal (weight: 5%) |
+| `tempo_bpm` | float | Normalized proximity; supporting signal |
+
+### UserProfile Features
+
+Each `UserProfile` stores:
+
+| Field | Type | How it's used |
+|---|---|---|
+| `favorite_genre` | string | Binary match against `song.genre` |
+| `favorite_mood` | string | Binary match against `song.mood` |
+| `target_energy` | float 0–1 | Target for energy proximity scoring |
+| `likes_acoustic` | bool | Converted to target (0.8 if True, 0.2 if False) for acousticness scoring |
+
+### Scoring and Ranking
+
+1. **Score each song** using a weighted sum: `score = 0.30×genre + 0.25×energy + 0.20×mood + 0.10×valence + 0.10×acousticness + 0.05×danceability`
+2. **Rank all songs** by descending score.
+3. **Return the top-K songs** (default K=5) as recommendations.
 
 ---
 
