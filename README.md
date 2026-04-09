@@ -17,7 +17,7 @@ This simulation builds a content-based music recommender that matches songs to a
 
 ## How The System Works
 
-Real-world recommenders like Spotify or YouTube combine **collaborative filtering** (recommending what similar users liked) and **content-based filtering** (recommending songs with similar audio features). At scale they add deep learning on raw audio, NLP on lyrics, and real-time feedback loops that update your profile with every skip or replay. This simulation focuses purely on **content-based filtering** — no user history, no crowd signal — which keeps the logic transparent and easy to reason about. The priority here is matching the *feel* of a song to what the user explicitly says they want: the right energy level, the right emotional mood, and the right genre, in that order of importance.
+Real-world recommenders like Spotify or YouTube combine **collaborative filtering** (recommending what similar users liked) and **content-based filtering** (recommending songs with similar audio features). At scale they layer on deep learning over raw audio spectrograms, NLP over lyrics and artist metadata, and real-time feedback loops that update your taste profile with every skip or replay. This simulation focuses purely on **content-based filtering** — no user history, no crowd signal — which keeps the logic transparent and easy to reason about. The priority here is matching the *feel* of a song to what the user explicitly says they want: the right genre first (biggest differentiator of musical style), then the right energy level (most physically felt), then the right emotional mood. Numerical features like energy are scored by *proximity* — rewarding songs closer to the user's target rather than simply higher or lower — while categorical features like genre and mood use a binary match. Every song gets a single weighted score, and the top-K highest scores become the recommendations.
 
 ### Song Features
 
@@ -44,11 +44,58 @@ Each `UserProfile` stores:
 | `target_energy` | float 0–1 | Target for energy proximity scoring |
 | `likes_acoustic` | bool | Converted to target (0.8 if True, 0.2 if False) for acousticness scoring |
 
+### Algorithm Recipe
+
+```
+score = 0.30 × genre_match
+      + 0.25 × energy_proximity
+      + 0.20 × mood_match
+      + 0.10 × valence
+      + 0.10 × acousticness_proximity
+      + 0.05 × danceability
+```
+
+Where each term is computed as:
+
+| Term | Rule |
+|---|---|
+| `genre_match` | 1.0 if `song.genre == user.favorite_genre`, else 0.0 |
+| `mood_match` | 1.0 if `song.mood == user.favorite_mood`, else 0.0 |
+| `energy_proximity` | `1 - \|user.target_energy − song.energy\|` |
+| `acousticness_proximity` | `1 - \|acoustic_target − song.acousticness\|` where `acoustic_target = 0.8 if likes_acoustic else 0.2` |
+| `valence` | raw song value (0–1); higher = more positive/upbeat |
+| `danceability` | raw song value (0–1); secondary activity signal |
+
 ### Scoring and Ranking
 
-1. **Score each song** using a weighted sum: `score = 0.30×genre + 0.25×energy + 0.20×mood + 0.10×valence + 0.10×acousticness + 0.05×danceability`
+1. **Score each song** using the weighted recipe above.
 2. **Rank all songs** by descending score.
 3. **Return the top-K songs** (default K=5) as recommendations.
+
+### Data Flow
+
+```mermaid
+flowchart TD
+    A["User Profile\n(favorite_genre, favorite_mood,\ntarget_energy, likes_acoustic)"] --> B
+    B["songs.csv\n(20 songs)"] --> C["For each song: apply scoring rule"]
+    A --> C
+    C --> D["genre_match × 0.30"]
+    C --> E["energy_proximity × 0.25"]
+    C --> F["mood_match × 0.20"]
+    C --> G["valence × 0.10"]
+    C --> H["acousticness_proximity × 0.10"]
+    C --> I["danceability × 0.05"]
+    D & E & F & G & H & I --> J["Weighted Sum → song score"]
+    J --> K["Sort all scores descending"]
+    K --> L["Return top-K songs + explanations"]
+```
+
+### Expected Biases
+
+- **Genre lock:** at 30% weight, a genre match alone contributes more than a perfect energy + mood combo (~0.30 vs 0.25 + 0.20 = 0.45 at best). A great song that almost matches the user's energy and mood will still lose to a mediocre genre match.
+- **No partial credit for similar moods:** "chill" and "relaxed" are semantically close but score identically to "chill" vs "metal" — both get 0 for a mismatch.
+- **Acousticness is binary:** `likes_acoustic` only maps to two target values (0.8 or 0.2). Users with nuanced preferences (e.g., "somewhat acoustic") are poorly served.
+- **Small catalog amplifies imbalance:** with 20 songs, over-represented genres (lofi has 3 entries) will appear in top results more often than their quality warrants.
 
 ---
 
